@@ -11,6 +11,7 @@ class UserCreate(BaseModel):
 
 class InviteRequest(BaseModel):
     email: EmailStr
+    org_id: Optional[str] = None
 
 class ActivateRequest(BaseModel):
     token: str

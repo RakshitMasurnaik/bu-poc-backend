@@ -51,9 +51,16 @@ async def invite_user(invite_data: schemas.InviteRequest, current_user: User = D
     # Generate a secure token
     token = secrets.token_urlsafe(32)
     
+    target_org_id = current_user.organization_id
+    if current_user.global_role == "platform_admin" and invite_data.org_id:
+        target_org_id = invite_data.org_id
+        
+    if not target_org_id:
+        raise HTTPException(status_code=400, detail="Organization ID is required")
+
     new_invitation = Invitation(
         email=invite_data.email,
-        organization_id=current_user.organization_id,
+        organization_id=target_org_id,
         invited_by_id=current_user.id,
         token=token
     )
