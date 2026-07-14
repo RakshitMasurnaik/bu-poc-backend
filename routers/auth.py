@@ -7,6 +7,7 @@ from models import User, Organization, Invitation
 import schemas
 import secrets
 from utils.auth import get_password_hash, verify_password, create_access_token, get_current_user, require_org_admin
+from utils.email import send_invitation_email
 from datetime import timedelta
 import logging
 
@@ -59,13 +60,8 @@ async def invite_user(invite_data: schemas.InviteRequest, current_user: User = D
     db.add(new_invitation)
     await db.commit()
 
-    # Mock sending email by logging
-    activation_link = f"http://localhost:3000/activate?token={token}"
-    print(f"\n=======================================================")
-    print(f"MOCK EMAIL SENT TO: {invite_data.email}")
-    print(f"Subject: You've been invited to join an Organization!")
-    print(f"Activation Link: {activation_link}")
-    print(f"=======================================================\n")
+    # Send the email via Resend
+    send_invitation_email(invite_data.email, token)
     
     return {"message": "Invitation sent successfully"}
 
