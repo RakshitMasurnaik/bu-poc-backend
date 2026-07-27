@@ -78,11 +78,21 @@ async def get_current_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Check access
-    if current_user.global_role in ["platform_admin", "org_admin"]:
-        # Org Admins can access all projects in their org
-        if current_user.global_role == "org_admin" and project.organization_id != current_user.organization_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.global_role == "platform_admin":
         return project
+
+    # Org Admins can access all projects in their org
+    if current_user.global_role == "org_admin":
+        from models import OrganizationMember
+        org_mem_result = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.user_id == current_user.id,
+                OrganizationMember.organization_id == project.organization_id,
+                OrganizationMember.role == "org_admin"
+            )
+        )
+        if org_mem_result.scalars().first():
+            return project
 
     # Standard users must be members of the project
     member_result = await db.execute(

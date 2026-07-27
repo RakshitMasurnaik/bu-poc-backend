@@ -50,6 +50,7 @@ class OrganizationWithProjectsResponse(OrganizationResponse):
 # --- Project Schemas ---
 class ProjectCreate(BaseModel):
     name: str
+    org_id: str
 
 class ProjectResponse(BaseModel):
     id: str

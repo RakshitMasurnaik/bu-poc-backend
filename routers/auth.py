@@ -33,10 +33,20 @@ async def register_user(user_data: schemas.UserCreate, db: AsyncSession = Depend
         email=user_data.email,
         hashed_password=hashed_pwd,
         full_name=user_data.full_name,
-        organization_id=new_org.id,
-        global_role="org_admin"
+        global_role="org_admin",
+        is_active="true"
     )
     db.add(new_user)
+    await db.flush()
+
+    from models import OrganizationMember
+    org_member = OrganizationMember(
+        organization_id=new_org.id,
+        user_id=new_user.id,
+        role="org_admin"
+    )
+    db.add(org_member)
+    
     await db.commit()
     await db.refresh(new_user)
     return new_user
@@ -51,9 +61,16 @@ async def invite_user(invite_data: schemas.InviteRequest, current_user: User = D
     # Generate a secure token
     token = secrets.token_urlsafe(32)
     
-    target_org_id = current_user.organization_id
-    if current_user.global_role == "platform_admin" and invite_data.org_id:
-        target_org_id = invite_data.org_id
+    target_org_id = invite_data.org_id
+    if current_user.global_role == "org_admin":
+        from models import OrganizationMember
+        # find the org_admin's org. Since they could be in multiple, but for now we expect org_id in request.
+        # If not provided, we fall back to their first org for compatibility, though frontend should send it.
+        if not target_org_id:
+            org_mem_result = await db.execute(select(OrganizationMember).where(OrganizationMember.user_id == current_user.id, OrganizationMember.role == "org_admin"))
+            first_org = org_mem_result.scalars().first()
+            if first_org:
+                target_org_id = first_org.organization_id
         
     if not target_org_id:
         raise HTTPException(status_code=400, detail="Organization ID is required")
@@ -87,10 +104,19 @@ async def activate_user(activate_data: schemas.ActivateRequest, db: AsyncSession
         email=invitation.email,
         hashed_password=hashed_pwd,
         full_name=activate_data.full_name,
-        organization_id=invitation.organization_id,
-        global_role="user" # Default to user
+        global_role="user",
+        is_active="true"
     )
     db.add(new_user)
+    await db.flush()
+
+    from models import OrganizationMember
+    org_member = OrganizationMember(
+        organization_id=invitation.organization_id,
+        user_id=new_user.id,
+        role="user"
+    )
+    db.add(org_member)
     
     # Update invitation status
     invitation.status = "accepted"
@@ -113,7 +139,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         
     access_token_expires = timedelta(hours=2)
     access_token = create_access_token(
-        data={"sub": user.id, "org": user.organization_id, "role": user.global_role}, expires_delta=access_token_expires
+        data={"sub": user.id, "role": user.global_role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 

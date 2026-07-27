@@ -14,8 +14,20 @@ class Organization(Base):
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    users = relationship("User", back_populates="organization")
+    members = relationship("OrganizationMember", back_populates="organization")
     projects = relationship("Project", back_populates="organization")
+
+class OrganizationMember(Base):
+    __tablename__ = 'organization_members'
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey('organizations.id'))
+    user_id = Column(String, ForeignKey('users.id'))
+    role = Column(String, default="user") # 'org_admin', 'user'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="members")
+    user = relationship("User", back_populates="organization_memberships")
 
 class User(Base):
     __tablename__ = 'users'
@@ -24,11 +36,11 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String)
-    organization_id = Column(String, ForeignKey('organizations.id'), nullable=True) # Platform admin might not have an org, or could have a default one. Nullable allows platform admin without org.
     global_role = Column(String, default="user") # 'platform_admin', 'org_admin', 'user'
+    is_active = Column(String, default="true")
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    organization = relationship("Organization", back_populates="users")
+    organization_memberships = relationship("OrganizationMember", back_populates="user")
     project_memberships = relationship("ProjectMember", back_populates="user")
 
 class Project(Base):
