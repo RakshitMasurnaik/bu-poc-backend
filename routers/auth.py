@@ -53,14 +53,6 @@ async def register_user(user_data: schemas.UserCreate, db: AsyncSession = Depend
 
 @router.post("/invite", status_code=status.HTTP_201_CREATED)
 async def invite_user(invite_data: schemas.InviteRequest, current_user: User = Depends(require_org_admin), db: AsyncSession = Depends(get_db)):
-    # Check if email is already a user
-    result = await db.execute(select(User).where(User.email == invite_data.email))
-    if result.scalars().first():
-        raise HTTPException(status_code=400, detail="User already exists")
-
-    # Generate a secure token
-    token = secrets.token_urlsafe(32)
-    
     target_org_id = invite_data.org_id
     if current_user.global_role == "org_admin":
         from models import OrganizationMember
@@ -75,6 +67,37 @@ async def invite_user(invite_data: schemas.InviteRequest, current_user: User = D
     if not target_org_id:
         raise HTTPException(status_code=400, detail="Organization ID is required")
 
+    # Check if email is already a user
+    result = await db.execute(select(User).where(User.email == invite_data.email))
+    existing_user = result.scalars().first()
+    
+    if existing_user:
+        # User already exists, add them directly to the organization
+        from models import OrganizationMember
+        from utils.email import send_existing_user_added_email
+        
+        # Check if they are already in this org
+        existing_member_result = await db.execute(select(OrganizationMember).where(
+            OrganizationMember.user_id == existing_user.id, 
+            OrganizationMember.organization_id == target_org_id
+        ))
+        if existing_member_result.scalars().first():
+            return {"message": "User is already in this organization"}
+            
+        org_member = OrganizationMember(
+            organization_id=target_org_id,
+            user_id=existing_user.id,
+            role="user"
+        )
+        db.add(org_member)
+        await db.commit()
+        
+        send_existing_user_added_email(invite_data.email)
+        return {"message": "Existing user added to organization successfully"}
+
+    # Generate a secure token for new user
+    token = secrets.token_urlsafe(32)
+    
     new_invitation = Invitation(
         email=invite_data.email,
         organization_id=target_org_id,
@@ -84,7 +107,8 @@ async def invite_user(invite_data: schemas.InviteRequest, current_user: User = D
     db.add(new_invitation)
     await db.commit()
 
-    # Send the email via Resend
+    # Send the email via Resend / SMTP
+    from utils.email import send_invitation_email
     send_invitation_email(invite_data.email, token)
     
     return {"message": "Invitation sent successfully"}
